@@ -17,7 +17,7 @@ func main() {
 		{"Gina Gable", "202-555-0107", false},
 	}
 
-	hashTable := NewLinearProbingHashTable(10)
+	hashTable := NewQuadraticProbingHashTable(10)
 	for _, employee := range employees {
 		hashTable.set(employee.name, employee.phone)
 	}
@@ -49,7 +49,7 @@ func main() {
 	// Look at clustering.
 	random := rand.New(rand.NewSource(12345)) // Initialize with a fixed seed
 	bigCapacity := 1009
-	bigHashTable := NewLinearProbingHashTable(bigCapacity)
+	bigHashTable := NewQuadraticProbingHashTable(bigCapacity)
 	numItems := int(float32(bigCapacity) * 0.9)
 	for i := 0; i < numItems; i++ {
 		str := fmt.Sprintf("%d-%d", i, random.Intn(1000000))
@@ -80,21 +80,21 @@ type Employee struct {
 	deleted bool
 }
 
-type LinearProbingHashTable struct {
+type QuadraticProbingHashTable struct {
 	capacity  int
 	employees []*Employee
 }
 
-// NewLinearProbingHashTable Initialize a LinearProbingHashTable and return a pointer to it.
-func NewLinearProbingHashTable(capacity int) *LinearProbingHashTable {
-	return &LinearProbingHashTable{
+// NewQuadraticProbingHashTable Initialize a QuadraticProbingHashTable and return a pointer to it.
+func NewQuadraticProbingHashTable(capacity int) *QuadraticProbingHashTable {
+	return &QuadraticProbingHashTable{
 		capacity:  capacity,
 		employees: make([]*Employee, capacity),
 	}
 }
 
 // Display the hash table's contents.
-func (hashTable *LinearProbingHashTable) dump() {
+func (hashTable *QuadraticProbingHashTable) dump() {
 	for key, employee := range hashTable.employees {
 		if employee != nil {
 			if employee.deleted {
@@ -111,12 +111,12 @@ func (hashTable *LinearProbingHashTable) dump() {
 // Return the key's index or where it would be if present and
 // the probe sequence length.
 // If the key is not present and the table is full, return -1 for the index.
-func (hashTable *LinearProbingHashTable) find(name string) (int, int) {
+func (hashTable *QuadraticProbingHashTable) find(name string) (int, int) {
 	computedHash := hash(name) % hashTable.capacity
 	deletedIndex := -1
 
 	for i := 0; i < hashTable.capacity; i++ {
-		index := (computedHash + i) % hashTable.capacity
+		index := (computedHash + i*i) % hashTable.capacity
 
 		if hashTable.employees[index] == nil {
 			if deletedIndex >= 0 {
@@ -141,7 +141,7 @@ func (hashTable *LinearProbingHashTable) find(name string) (int, int) {
 }
 
 // Add an item to the hash table.
-func (hashTable *LinearProbingHashTable) set(name string, phone string) {
+func (hashTable *QuadraticProbingHashTable) set(name string, phone string) {
 	index, _ := hashTable.find(name)
 
 	if index < 0 {
@@ -156,7 +156,7 @@ func (hashTable *LinearProbingHashTable) set(name string, phone string) {
 }
 
 // Return an item from the hash table.
-func (hashTable *LinearProbingHashTable) get(name string) string {
+func (hashTable *QuadraticProbingHashTable) get(name string) string {
 	index, _ := hashTable.find(name)
 
 	if index < 0 {
@@ -175,7 +175,7 @@ func (hashTable *LinearProbingHashTable) get(name string) string {
 }
 
 // Return true if the person is in the hash table.
-func (hashTable *LinearProbingHashTable) contains(name string) bool {
+func (hashTable *QuadraticProbingHashTable) contains(name string) bool {
 	index, _ := hashTable.find(name)
 
 	if index < 0 {
@@ -194,7 +194,7 @@ func (hashTable *LinearProbingHashTable) contains(name string) bool {
 }
 
 // Delete this key's entry.
-func (hashTable *LinearProbingHashTable) delete(name string) {
+func (hashTable *QuadraticProbingHashTable) delete(name string) {
 	index, _ := hashTable.find(name)
 
 	if index >= 0 && hashTable.employees[index] != nil {
@@ -203,7 +203,7 @@ func (hashTable *LinearProbingHashTable) delete(name string) {
 }
 
 // Make a display showing whether each slice entry is nil.
-func (hashTable *LinearProbingHashTable) dumpConcise() {
+func (hashTable *QuadraticProbingHashTable) dumpConcise() {
 	// Loop through the slice.
 	for i, employee := range hashTable.employees {
 		if employee == nil {
@@ -225,7 +225,7 @@ func (hashTable *LinearProbingHashTable) dumpConcise() {
 }
 
 // Return the average probe sequence length for the items in the table.
-func (hashTable *LinearProbingHashTable) aveProbeSequenceLength() float32 {
+func (hashTable *QuadraticProbingHashTable) aveProbeSequenceLength() float32 {
 	totalLength := 0
 	numValues := 0
 	for _, employee := range hashTable.employees {
@@ -239,7 +239,7 @@ func (hashTable *LinearProbingHashTable) aveProbeSequenceLength() float32 {
 }
 
 // Show this key's probe sequence.
-func (hashTable *LinearProbingHashTable) probe(name string) int {
+func (hashTable *QuadraticProbingHashTable) probe(name string) int {
 	// Hash the key.
 	hash := hash(name) % hashTable.capacity
 	fmt.Printf("Probing %s (%d)\n", name, hash)
@@ -249,7 +249,7 @@ func (hashTable *LinearProbingHashTable) probe(name string) int {
 
 	// Probe up to hash_table.capacity times.
 	for i := 0; i < hashTable.capacity; i++ {
-		index := (hash + i) % hashTable.capacity
+		index := (hash + i*i) % hashTable.capacity
 
 		fmt.Printf("    %d: ", index)
 		if hashTable.employees[index] == nil {
