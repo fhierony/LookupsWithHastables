@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 )
 
 func main() {
@@ -14,12 +15,9 @@ func main() {
 		{"Edwina Eager", "202-555-0105"},
 		{"Fred Franklin", "202-555-0106"},
 		{"Gina Gable", "202-555-0107"},
-		{"Herb Henshaw", "202-555-0108"},
-		{"Ida Iverson", "202-555-0109"},
-		{"Jeb Jacobs", "202-555-0110"},
 	}
 
-	hashTable := NewChainingHashTable(10)
+	hashTable := NewLinearProbingHashTable(10)
 	for _, employee := range employees {
 		hashTable.set(employee.name, employee.phone)
 	}
@@ -27,14 +25,27 @@ func main() {
 
 	fmt.Printf("Table contains Sally Owens: %t\n", hashTable.contains("Sally Owens"))
 	fmt.Printf("Table contains Dan Deever: %t\n", hashTable.contains("Dan Deever"))
-	fmt.Println("Deleting Dan Deever")
-	hashTable.delete("Dan Deever")
-	fmt.Printf("Table contains Dan Deever: %t\n", hashTable.contains("Dan Deever"))
+	// fmt.Println("Deleting Dan Deever")
+	// hash_table.delete("Dan Deever")
+	// fmt.Printf("Table contains Dan Deever: %t\n", hash_table.contains("Dan Deever"))
 	fmt.Printf("Sally Owens: %s\n", hashTable.get("Sally Owens"))
 	fmt.Printf("Fred Franklin: %s\n", hashTable.get("Fred Franklin"))
 	fmt.Println("Changing Fred Franklin")
 	hashTable.set("Fred Franklin", "202-555-0100")
 	fmt.Printf("Fred Franklin: %s\n", hashTable.get("Fred Franklin"))
+
+	// Look at clustering.
+	random := rand.New(rand.NewSource(12345)) // Initialize with a fixed seed
+	bigCapacity := 1009
+	bigHashTable := NewLinearProbingHashTable(bigCapacity)
+	numItems := int(float32(bigCapacity) * 0.9)
+	for i := 0; i < numItems; i++ {
+		str := fmt.Sprintf("%d-%d", i, random.Intn(1000000))
+		bigHashTable.set(str, str)
+	}
+	bigHashTable.dumpConcise()
+	fmt.Printf("Average probe sequence length: %f\n",
+		bigHashTable.aveProbeSequenceLength())
 }
 
 // djb2 hash function. See http://www.cse.yorku.ca/~oz/hash.html.
@@ -56,84 +67,122 @@ type Employee struct {
 	phone string
 }
 
-type ChainingHashTable struct {
-	numBuckets int
-	buckets    [][]*Employee
+type LinearProbingHashTable struct {
+	capacity  int
+	employees []*Employee
 }
 
-// NewChainingHashTable Initialize a ChainingHashTable and return a pointer to it.
-func NewChainingHashTable(numBuckets int) *ChainingHashTable {
-	return &ChainingHashTable{numBuckets, make([][]*Employee, numBuckets)}
+// NewLinearProbingHashTable Initialize a LinearProbingHashTable and return a pointer to it.
+func NewLinearProbingHashTable(capacity int) *LinearProbingHashTable {
+	return &LinearProbingHashTable{
+		capacity:  capacity,
+		employees: make([]*Employee, capacity),
+	}
 }
 
 // Display the hash table's contents.
-func (hashTable *ChainingHashTable) dump() {
-	for key, value := range hashTable.buckets {
-		fmt.Printf("Bucket %d :\n", key)
-		for _, employee := range value {
-			fmt.Printf("\t%s: %s\n", employee.name, employee.phone)
+func (hashTable *LinearProbingHashTable) dump() {
+	for key, employee := range hashTable.employees {
+		if employee != nil {
+			fmt.Printf("%2d: %-15s %s\n", key, employee.name, employee.phone)
+		} else {
+			fmt.Printf("%2d: ---\n", key)
 		}
 	}
 }
 
-// Find the bucket and Employee holding this key.
-// Return the bucket number and Employee number in the bucket.
-// If the key is not present, return the bucket number and -1.
-func (hashTable *ChainingHashTable) find(name string) (int, int) {
-	index := hash(name) % hashTable.numBuckets
-	for key, employee := range hashTable.buckets[index] {
-		if employee.name == name {
-			return index, key
+// Return the key's index or where it would be if present and
+// the probe sequence length.
+// If the key is not present and the table is full, return -1 for the index.
+func (hashTable *LinearProbingHashTable) find(name string) (int, int) {
+	computedHash := hash(name) % hashTable.capacity
+
+	for i := 0; i < hashTable.capacity; i++ {
+		index := (computedHash + i) % hashTable.capacity
+
+		if hashTable.employees[index] == nil {
+			return index, i + 1
+		}
+
+		if hashTable.employees[index].name == name {
+			return index, i + 1
 		}
 	}
-	return index, -1
+
+	return -1, hashTable.capacity
 }
 
 // Add an item to the hash table.
-func (hashTable *ChainingHashTable) set(name string, phone string) {
-	bucket, index := hashTable.find(name)
+func (hashTable *LinearProbingHashTable) set(name string, phone string) {
+	index, _ := hashTable.find(name)
 
-	// Check if key is already present, if yes, just update
-	if index >= 0 {
-		hashTable.buckets[bucket][index].phone = phone
+	if index < 0 {
+		panic("The hashtable is full.")
+	}
+
+	if hashTable.employees[index] != nil {
+		hashTable.employees[index].phone = phone
 	} else {
-		// Add a new employee
-		hashTable.buckets[bucket] = append(hashTable.buckets[bucket], &Employee{name, phone})
+		hashTable.employees[index] = &Employee{name, phone}
 	}
 }
 
 // Return an item from the hash table.
-func (hashTable *ChainingHashTable) get(name string) string {
-	bucket, index := hashTable.find(name)
+func (hashTable *LinearProbingHashTable) get(name string) string {
+	index, _ := hashTable.find(name)
 
-	// Check if key is present, if yes, return phone
-	if index >= 0 {
-		return hashTable.buckets[bucket][index].phone
+	if index < 0 {
+		return ""
 	}
 
-	return ""
+	if hashTable.employees[index] == nil {
+		return ""
+	}
+	return hashTable.employees[index].phone
 }
 
 // Return true if the person is in the hash table.
-func (hashTable *ChainingHashTable) contains(name string) bool {
-	_, index := hashTable.find(name)
+func (hashTable *LinearProbingHashTable) contains(name string) bool {
+	index, _ := hashTable.find(name)
 
-	if index == -1 {
+	if index < 0 {
 		return false
 	}
 
+	if hashTable.employees[index] == nil {
+		return false
+	}
 	return true
 }
 
-// Delete this key's entry.
-func (hashTable *ChainingHashTable) delete(name string) {
-	bucket, index := hashTable.find(name)
-
-	// Check if key is present, if yes, return phone
-	if index >= 0 {
-		currentBucket := hashTable.buckets[bucket]
-		currentBucket[index] = currentBucket[len(currentBucket)-1]
-		currentBucket = currentBucket[:len(currentBucket)-1]
-		hashTable.buckets[bucket] = currentBucket
+// Make a display showing whether each slice entry is nil.
+func (hashTable *LinearProbingHashTable) dumpConcise() {
+	// Loop through the slice.
+	for i, employee := range hashTable.employees {
+		if employee == nil {
+			// This spot is empty.
+			fmt.Printf(".")
+		} else {
+			// Display this entry.
+			fmt.Printf("O")
+		}
+		if i%50 == 49 {
+			fmt.Println()
+		}
 	}
+	fmt.Println()
+}
+
+// Return the average probe sequence length for the items in the table.
+func (hashTable *LinearProbingHashTable) aveProbeSequenceLength() float32 {
+	totalLength := 0
+	numValues := 0
+	for _, employee := range hashTable.employees {
+		if employee != nil {
+			_, probeLength := hashTable.find(employee.name)
+			totalLength += probeLength
+			numValues++
+		}
+	}
+	return float32(totalLength) / float32(numValues)
 }
